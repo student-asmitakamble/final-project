@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='admin_dashboard.css') }}">
+    <style>
+        /* Add styles for the logout button */
+        .logout-button {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: #f44336;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+
+        .logout-button:hover {
+            background-color: #d32f2f;
+        }
+        body {
+            background-image: url('/static/images/janko-ferlic-sfL_QOnmy00-unsplash.jpg');
+            background-size: cover;
+            background-position: center center;
+            background-attachment: fixed;
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+        
+    </style>
+</head>
+<body>
+    <a href="{{ url_for('logout') }}" class="logout-button">Logout</a>
+
+    <h1>Welcome to the Admin Dashboard</h1>
+
+    <div class="dashboard-container">
+        <!-- Create a New Library User Section -->
+        <div class="create-user-section">
+            <h2>Create a New Library User</h2>
+            <form method="POST">
+                <label for="user_email">Email</label>
+                <input type="email" id="user_email" name="user_email" required>
+
+                <label for="user_password">Password</label>
+                <input type="password" id="user_password" name="user_password" required>
+
+                <button type="submit" name="create_user">Create User</button>
+            </form>
+        </div>
+
+        <!-- Book Borrow Requests Section -->
+        <h2>Book Borrow Requests</h2>
+        <table>
+            <tr>
+                <th>Request ID</th>
+                <th>User Email</th>
+                <th>Book Title</th>
+                <th>Status</th>
+                <th>Action</th>
+            </tr>
+            {% for request in borrow_requests %}
+            <tr>
+                <td>{{ request[0] }}</td>
+                <td>{{ request[1] }}</td>
+                <td>{{ request[2] }}</td>
+                <td>{{ request[3] }}</td>
+                <td>
+                    {% if request[3] == 'Pending' %}
+                        <form method="POST" style="display:inline;">
+                            <button type="submit" name="approve" value="Approve">Approve</button>
+                            <input type="hidden" name="request_id" value="{{ request[0] }}">
+                        </form>
+                        <form method="POST" style="display:inline;">
+                            <button type="submit" name="deny" value="Deny">Deny</button>
+                            <input type="hidden" name="request_id" value="{{ request[0] }}">
+                        </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+
+        <!-- User Borrow History Section -->
+        <h2>User Borrow History</h2>
+        <table>
+            <tr>
+                <th>User ID</th>
+                <th>User Email</th>
+                <th>Action</th>
+            </tr>
+            {% for user in users %}
+            <tr>
+                <td>{{ user[0] }}</td>
+                <td>{{ user[1] }}</td>
+                <td><a href="{{ url_for('user_history', user_id=user[0]) }}">View History</a></td>
+            </tr>
+            {% endfor %}
+        </table>
+
+    </div>
+</body>
+</html>

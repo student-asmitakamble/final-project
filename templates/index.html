@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Library Management System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <style>
+        body {
+            background-image: url('/static/images/janko-ferlic-sfL_QOnmy00-unsplash.jpg');
+            background-size: cover;
+            background-position: center center;
+            background-attachment: fixed;
+            margin: 0;
+            padding: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome to the Library Management System</h1>
+
+        <!-- User and Admin Login Buttons -->
+        <div class="login-buttons">
+            <button id="user-login-button">User Login</button>
+            <button id="admin-login-button">Admin Login</button>
+        </div>
+
+    </div>
+
+    <script>
+        // Handle User Login button click
+        document.getElementById('user-login-button').addEventListener('click', function() {
+            window.location.href = '/user-login'; // Redirect to the user login page
+        });
+
+        // Handle Admin Login button click
+        document.getElementById('admin-login-button').addEventListener('click', function() {
+            window.location.href = '/admin-login'; // Redirect to the admin login page
+        });
+    </script>
+</body>
+</html>
