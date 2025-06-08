@@ -103,7 +103,7 @@ def user_dashboard():
 
     
     cursor.execute("""
-        SELECT b.title, br.borrow_date, br.return_date, br.status
+        SELECT b.title, b.author, br.borrow_date, br.return_date, br.status
         FROM borrow_requests br
         JOIN books b ON br.book_id = b.id
         WHERE br.user_id = %s
@@ -216,6 +216,7 @@ def user_history(user_id):
             br.id AS request_id,
             br.book_id,
             b.title AS book_name,
+            b.author AS author_name,
             br.borrow_date,
             br.return_date,
             br.status
@@ -284,7 +285,7 @@ def download_history(user_id):
 
     # Fetch borrow history for the given user
     cursor.execute("""
-        SELECT b.title, br.borrow_date, br.return_date, br.status
+        SELECT b.title, b.author, br.borrow_date, br.return_date, br.status
         FROM borrow_requests br
         JOIN books b ON br.book_id = b.id
         WHERE br.user_id = %s
@@ -297,7 +298,7 @@ def download_history(user_id):
     # Create a CSV file in memory
     output = StringIO()
     writer = csv.writer(output)
-    writer.writerow(['Book Title', 'From', 'To', 'Status'])  # Header row
+    writer.writerow(['Book Title', 'Author','From', 'To', 'Status'])  # Header row
     writer.writerows(borrow_history)  # Write data rows
 
     # Generate the response as a CSV file
@@ -308,6 +309,7 @@ def download_history(user_id):
         mimetype='text/csv',
         headers={"Content-Disposition": f"attachment;filename=borrow_history_user_{user_id}.csv"}
     )
+    
 @app.route('/download-report/<string:period>')
 def download_report(period):
     today = datetime.date.today()
@@ -327,7 +329,7 @@ def download_report(period):
     cursor = connection.cursor()
 
     cursor.execute("""
-        SELECT br.id, u.email, b.title, br.borrow_date, br.return_date, br.status
+        SELECT br.id, u.email, b.title, b.author, br.borrow_date, br.return_date, br.status
         FROM borrow_requests br
         JOIN users u ON br.user_id = u.id
         JOIN books b ON br.book_id = b.id
@@ -341,7 +343,7 @@ def download_report(period):
     # Prepare CSV
     output = StringIO()
     writer = csv.writer(output)
-    writer.writerow(['Request ID', 'User Email', 'Book Title', 'From', 'To', 'Status'])
+    writer.writerow(['Request ID', 'User Email', 'Book Title', 'Author', 'From', 'To', 'Status'])
     for row in records:
         writer.writerow(row)
 
