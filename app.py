@@ -1,11 +1,11 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for,Response
 import mysql.connector
 from werkzeug.security import check_password_hash 
 from flask import session
 from flask import Response
 import csv
 from io import StringIO
-
+import datetime
 
 app = Flask(__name__)
 
@@ -14,9 +14,10 @@ def get_db_connection():
     connection = mysql.connector.connect(
         host='localhost',
         user='root',
-        password='Rakshu@12345',
-        database='lb'
+        password='gcoek',
+        database='lbs3'
     )
+    
     return connection
 
 
@@ -91,12 +92,18 @@ def user_dashboard():
     
     connection = get_db_connection()
     cursor = connection.cursor()
-    cursor.execute("SELECT id, title, author, available FROM books WHERE available > 0")
+    cursor.execute("""
+    SELECT MIN(id) AS id, title, author 
+    FROM books 
+    WHERE available > 0 
+    GROUP BY title, author
+""")
     books = cursor.fetchall()
+    print("Books fetched:", books)
 
     
     cursor.execute("""
-        SELECT b.title, br.date_from, br.date_to, br.status
+        SELECT b.title, br.borrow_date, br.return_date, br.status
         FROM borrow_requests br
         JOIN books b ON br.book_id = b.id
         WHERE br.user_id = %s
@@ -112,8 +119,8 @@ def user_dashboard():
 def borrow_book():
     user_id = request.form['user_id']
     book_id = request.form['book_id']
-    date_from = request.form['date_from']
-    date_to = request.form['date_to']
+    borrow_date = request.form['date_from']
+    return_date = request.form['date_to']
 
     connection = get_db_connection()
     cursor = connection.cursor()
@@ -125,9 +132,9 @@ def borrow_book():
     if book and book[0] > 0:
         
         cursor.execute("""
-            INSERT INTO borrow_requests (user_id, book_id, date_from, date_to, status)
+            INSERT INTO borrow_requests (user_id, book_id, borrow_date, return_date, status)
             VALUES (%s, %s, %s, %s, 'Pending')
-        """, (user_id, book_id, date_from, date_to))
+        """, (user_id, book_id, borrow_date, return_date))
 
         
         cursor.execute("UPDATE books SET available = available - 1 WHERE id = %s", (book_id,))
@@ -140,27 +147,49 @@ def borrow_book():
     return redirect(url_for('user_dashboard', user_id=user_id))
 
 @app.route('/admin-dashboard', methods=['GET', 'POST'])
-def admin_dashboard():
+def admin_dashboard():  
     connection = get_db_connection()
-    cursor = connection.cursor()
+    cursor = connection.cursor(dictionary=True)
 
     if request.method == 'POST':
         request_id = request.form.get('request_id')
         
         # Check which button was clicked
         if 'approve' in request.form:
-            cursor.execute("UPDATE borrow_requests SET status = 'Approved' WHERE id = %s", (request_id,))
+            cursor.execute("UPDATE borrow_requests SET status = 'approved' WHERE id = %s", (request_id,))
+            connection.commit()
         elif 'deny' in request.form:
-            cursor.execute("UPDATE borrow_requests SET status = 'Denied' WHERE id = %s", (request_id,))
+            cursor.execute("UPDATE borrow_requests SET status = 'denied' WHERE id = %s", (request_id,))
+            connection.commit()
 
-        connection.commit()
+        # 2. Create New User
+        elif 'create_user' in request.form:
+            email = request.form['user_email']
+            password = request.form['user_password']
 
+            # OPTIONAL: hash password (recommended)
+            # from werkzeug.security import generate_password_hash
+            # password = generate_password_hash(password)
+
+            # Check if user already exists
+            cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
+            existing = cursor.fetchone()
+            if existing:
+                cursor.close()
+                connection.close()
+                return render_template('admin_dashboard.html', error='User already exists.')
+
+            # Insert new user
+            cursor.execute("INSERT INTO users (email, password) VALUES (%s, %s)", (email, password))
+            connection.commit()
+            
     # Fetch all borrow requests
     cursor.execute("""
         SELECT br.id, u.email, b.title, br.status
         FROM borrow_requests br
         JOIN users u ON br.user_id = u.id
         JOIN books b ON br.book_id = b.id
+        WHERE br.status = "Pending"
     """)
     borrow_requests = cursor.fetchall()
 
@@ -181,31 +210,63 @@ def user_history(user_id):
         connection = get_db_connection()
         cursor = connection.cursor(dictionary=True)
 
-        # Query to fetch user borrowing history with status = "approved"
+        # Fetch all borrow records for the user, no status filter
         query = """
         SELECT 
-            br.id, br.book_id, b.title AS book_name, br.date_from, br.date_to, br.status
+            br.id AS request_id,
+            br.book_id,
+            b.title AS book_name,
+            br.borrow_date,
+            br.return_date,
+            br.status
         FROM 
             borrow_requests br
         JOIN 
             books b ON br.book_id = b.id
         WHERE 
-            br.user_id = %s AND br.status = 'approved'
+            br.user_id = %s
+        ORDER BY 
+            br.borrow_date DESC
         """
         cursor.execute(query, (user_id,))
         borrowing_history = cursor.fetchall()
 
-        # Close the connection
+        print(f"Fetched {len(borrowing_history)} records for user {user_id}.")
+
+        # Close DB connection
         cursor.close()
         connection.close()
 
-        # Render the user history template with data
-        return render_template('user_history.html', borrowing_history=borrowing_history)
+        # Render the template with fetched history
+        return render_template('user_history.html', borrowing_history=borrowing_history, user_id=user_id)
 
     except mysql.connector.Error as err:
-        return f"Error: {err}"
+        return f"Database Error: {err}"
     except Exception as e:
-        return f"An unexpected error occurred: {e}"
+        return f"Unexpected Error: {e}"
+
+@app.route('/mark-returned/<int:request_id>/<int:user_id>', methods=['POST'])
+def mark_returned(request_id, user_id):
+    connection = get_db_connection()
+    cursor = connection.cursor()
+
+    # Mark book as returned
+    cursor.execute("UPDATE borrow_requests SET status = 'Returned', return_date = CURDATE() WHERE id = %s", (request_id,))
+
+    # Increase available count in books
+    cursor.execute("""
+        UPDATE books
+        SET available = available + 1
+        WHERE id = (SELECT book_id FROM borrow_requests WHERE id = %s)
+    """, (request_id,))
+
+    connection.commit()
+    cursor.close()
+    connection.close()
+
+    return redirect(url_for('user_history', user_id=user_id))
+
+
 
 @app.route('/logout')
 def logout():
@@ -223,7 +284,7 @@ def download_history(user_id):
 
     # Fetch borrow history for the given user
     cursor.execute("""
-        SELECT b.title, br.date_from, br.date_to, br.status
+        SELECT b.title, br.borrow_date, br.return_date, br.status
         FROM borrow_requests br
         JOIN books b ON br.book_id = b.id
         WHERE br.user_id = %s
@@ -243,8 +304,54 @@ def download_history(user_id):
     output.seek(0)
     return Response(
         output,
+        
         mimetype='text/csv',
         headers={"Content-Disposition": f"attachment;filename=borrow_history_user_{user_id}.csv"}
+    )
+@app.route('/download-report/<string:period>')
+def download_report(period):
+    today = datetime.date.today()
+
+    # Calculate start date based on period
+    if period == 'daily':
+        start_date = today
+    elif period == 'weekly':
+        start_date = today - datetime.timedelta(days=7)
+    elif period == 'monthly':
+        start_date = today - datetime.timedelta(days=30)
+    else:
+        return "Invalid period", 400
+
+    # Connect and fetch data
+    connection = get_db_connection()
+    cursor = connection.cursor()
+
+    cursor.execute("""
+        SELECT br.id, u.email, b.title, br.borrow_date, br.return_date, br.status
+        FROM borrow_requests br
+        JOIN users u ON br.user_id = u.id
+        JOIN books b ON br.book_id = b.id
+        WHERE br.borrow_date BETWEEN %s AND %s
+    """, (start_date, today))
+
+    records = cursor.fetchall()
+    cursor.close()
+    connection.close()
+
+    # Prepare CSV
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Request ID', 'User Email', 'Book Title', 'From', 'To', 'Status'])
+    for row in records:
+        writer.writerow(row)
+
+    output.seek(0)
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={
+            'Content-Disposition': f'attachment; filename={period}_report_{today}.csv'
+        }
     )
 
 
